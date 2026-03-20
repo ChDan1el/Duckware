@@ -5,7 +5,7 @@ uma parte da *flag*
 
 ##### [Link do desafio](https://energy.discloud.app/)
 
-Passo a Passo
+## Passo a Passo
 
 Ao entrar no site me deparo com uma lista de 7 desafios, onde cada resolução é retornada uma parte
 da senha para conseguir a *flag*
