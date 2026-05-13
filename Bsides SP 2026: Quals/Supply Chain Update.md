@@ -1,14 +1,23 @@
-### Contexto: Um ataque de supply chain acontece quando o atacante compromete algo que parece confiável, como uma atualização de software.
+## Introdução
 
-### Em vez de atacar diretamente a vítima, ele entrega um “update” falso.
+Neste desafio, o objetivo era analisar um arquivo .pcap e identificar um possível ataque de supply chain, no qual um atacante utiliza uma atualização aparentemente legítima para entregar um arquivo malicioso ou suspeito. A partir da análise do tráfego de rede, foi necessário encontrar os principais indicadores do ataque e, com eles, montar a flag.
 
-## PASSO A PASSO
+## Contexto:
+Um ataque de supply chain acontece quando o atacante compromete algo que parece confiável, como uma atualização de software, um pacote, uma dependência ou um servidor de distribuição.
 
-Após baixar o arquivo .pcap, uso o comando strings para encontrar palavras no arquivo
+Em vez de atacar diretamente a vítima, ele entrega um “update” falso ou adulterado, fazendo com que a própria vítima baixe o conteúdo comprometido acreditando ser legítimo.
+
+### 1) Analisando o Arquivo
+
+Após baixar o arquivo `.pcap`, comecei utilizando o comando `strings` para procurar palavras legíveis dentro do tráfego capturado
+
+```bash
+strings -a supply-chain-update.pcap
+```
 
 <img width="360" height="438" alt="image" src="https://github.com/user-attachments/assets/57bdc2cc-3336-494c-a793-49d2b7585ac8" />
 
-Encontrei domínios legítimos:
+Durante essa análise, encontrei alguns domínios aparentemente legítimos:
 
 ```
 updates.microsoft.com
@@ -21,7 +30,7 @@ api.nuget.org
 packages.microsoft.com
 ```
 
-E domínios suspeitos: 
+Porém, também apareceram domínios suspeitos relacionados a `ssin-cloud`:
 
 ```
 updates.ssin-cloud.com
@@ -30,15 +39,19 @@ updates.ssin-cloud.net
 static.ssin-cloud.net
 ```
 
-Com isso, o tráfego suspeito está relacionado com o `ssin-cloud`
+Com isso, ficou claro que o tráfego suspeito provavelmente estava relacionado aos domínios `ssin-cloud`
 
-## Filtrando os SNIs TLS
+### 2) Filtrando os SNIs TLS
 
-Após abrir o wireshark, uso o filtro ```tls.handshake.extensions_server_name contains "ssin-cloud"``` para encontrar as requisições com ssin-cloud
+Depois disso, abri o arquivo no Wireshark e utilizei o seguinte filtro para encontrar conexões TLS que continham `ssin-cloud` no campo SNI:
+
+```bash
+tls.handshake.extensions_server_name contains "ssin-cloud"
+```
 
 <img width="1110" height="287" alt="image" src="https://github.com/user-attachments/assets/22181993-defe-4cfc-8e3d-05630252993f" />
 
-Com esse filtro aparece várias conversas parecidas com:
+Com esse filtro, apareceram várias conexões parecidas com estas:
 
 ```
 10.8.6.20 -> 200.160.2.44  updates.ssin-cloud.com
@@ -48,15 +61,17 @@ Com esse filtro aparece várias conversas parecidas com:
 10.8.6.23 -> 200.160.2.44  updates.ssin-cloud.net
 ```
 
-Mas o mais suspeito é o `10.8.6.23 -> 200.160.2.44  updates.ssin-cloud.net`
+Entre elas, a conexão mais suspeita foi: ```10.8.6.23 -> 200.160.2.44  updates.ssin-cloud.net```
 
-## Seguir a conversa:
+Isso chamou atenção porque o domínio parecia simular um servidor de atualização, o que combina diretamente com o contexto de ataque de supply chain.
 
-Agora vou seguir a conversa desse domínio, usando a opição: ```Follow > TCP Stream```, para saber melhor o seu fluxo de requisições
+### Seguindo a conversa TCP: 
+
+Para entender melhor o fluxo dessa comunicação, selecionei a conexão suspeita no Wireshark e usei a opção: ```Follow > TCP Stream```
 
 <img width="1252" height="831" alt="image" src="https://github.com/user-attachments/assets/b5463889-d81f-4ad6-945b-b75adc47ba79" />
 
-Coletando as informações desses fluxos, consigo: 
+Ao analisar os dados encontrados nos fluxos, consegui identificar as seguintes informações:
 
 ```
 name=nfe-signer.dylib
@@ -69,7 +84,9 @@ SURICATA[SUPPLY_CHAIN]: tls_update pkg=nfe-signer.dylib src=10.8.6.23 result=cle
 
 > src=10.8.6.23 -> Quem baixou
 
-> 200.160.2.44 e ja3="suspicious" -> Servidor suspeito
+> 200.160.2.44 -> Servidor externo envolvido na comunicação
+
+> ja3="suspicious" -> Tráfego TLS marcado como suspeito com base no fingerprint JA3
 
 A conexão TLS foi marcada como suspeita. Mesmo aparecendo: 
 
@@ -79,7 +96,7 @@ result=clean
 status=allowed
 ```
 
-isso é provavelmente isca do desafio. O importante é que o próprio tráfego entrega o contexto:
+Isso é provavelmente isca do desafio. O importante é que o próprio tráfego entrega o contexto:
 
 ```
 supply_chain_update
@@ -87,7 +104,7 @@ pkg=nfe-signer.dylib
 c2=200.160.2.44
 ```
 
-Logo, temos a lógica do ataque:
+Com isso, os principais indicadores encontrados foram:
 
 > Arquivo suspeito: nfe-signer.dylib
 
@@ -95,18 +112,27 @@ Logo, temos a lógica do ataque:
 
 > Falando com: 200.160.2.44
 
-### Foramção da FLAG:
+### 3) Foramção da FLAG:
 
-A flag tem esse formato: `HIK_supply-chain-update_HASH`
+A flag segue o seguinte formato: `HIK_supply-chain-update_HASH`
 
-O hash é feito com os principais indicadores encontrados: 
+O hash é feito com os principais indicadores encontrados, separados por `|`: 
 
 ```nfe-signer.dylib|updates.ssin-cloud.net|200.160.2.44```
 
-Então vou transformar isso em um hash MD5, com o comando: 
+Para gerar o hash MD5, usei o comando:
 
-```echo -n 'nfe-signer.dylib|updates.ssin-cloud.net|200.160.2.44' | md5sum```
+```bash
+echo -n 'nfe-signer.dylib|updates.ssin-cloud.net|200.160.2.44' | md5sum
+```
+> Resultado: 44948940e9d2d52119fc8593335b96ed
 
 <img width="616" height="67" alt="image" src="https://github.com/user-attachments/assets/c734997b-c664-4a5f-b276-e850c452535b" />
 
 ## FLAG: HIK_supply-chain-update_44948940e9d2d52119fc8593335b96ed
+
+### Conclusão
+
+Neste desafio, a análise começou com a busca por strings dentro do `.pcap`, o que revelou domínios suspeitos relacionados a `ssin-cloud`. Em seguida, filtrando os SNIs TLS no Wireshark, foi possível identificar uma comunicação suspeita entre a máquina `10.8.6.23` e o servidor `200.160.2.44`.
+
+Ao seguir o fluxo TCP, foram encontrados os principais indicadores do ataque: o pacote `nfe-signer.dylib`, o domínio `updates.ssin-cloud.net` e o IP externo `200.160.2.44`. Esses elementos confirmaram o cenário de supply chain update e foram usados para gerar o hash MD5 que compõe a flag final.
