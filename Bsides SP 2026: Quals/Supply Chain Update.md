@@ -7,6 +7,8 @@ Um ataque de supply chain acontece quando o atacante compromete algo que parece 
 
 Em vez de atacar diretamente a vítima, ele entrega um “update” falso ou adulterado, fazendo com que a própria vítima baixe o conteúdo comprometido acreditando ser legítimo.
 
+##### [Download do Desafio](https://github.com/user-attachments/files/27737641/supply-chain-update.zip)
+
 ### 1) Analisando o Arquivo
 
 Após baixar o arquivo `.pcap`, comecei utilizando o comando `strings` para procurar palavras legíveis dentro do tráfego capturado
@@ -65,7 +67,7 @@ Entre elas, a conexão mais suspeita foi: ```10.8.6.23 -> 200.160.2.44  updates.
 
 Isso chamou atenção porque o domínio parecia simular um servidor de atualização, o que combina diretamente com o contexto de ataque de supply chain.
 
-### Seguindo a conversa TCP: 
+### 3) Seguindo a conversa TCP: 
 
 Para entender melhor o fluxo dessa comunicação, selecionei a conexão suspeita no Wireshark e usei a opção: ```Follow > TCP Stream```
 
@@ -112,7 +114,7 @@ Com isso, os principais indicadores encontrados foram:
 
 > Falando com: 200.160.2.44
 
-### 3) Foramção da FLAG:
+### 4) Formação da FLAG:
 
 A flag segue o seguinte formato: `HIK_supply-chain-update_HASH`
 
